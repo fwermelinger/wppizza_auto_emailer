@@ -79,6 +79,57 @@
             }
         }
 
+        //*******  show field in userlist  *********
+        function cuc_column_emailoptout( $defaults ) {
+            $defaults['cuc-usercolumn-emailoptout'] = __('Email Opt-Out', 'user-column');
+            return $defaults;
+        }
+
+        function cuc_custom_column_emailoptout($value, $column_name, $id) {
+            if( $column_name == 'cuc-usercolumn-emailoptout' ) {                
+                return get_usermeta($id, 'ynot_emailOptOut') ? "yes":"no"; 
+            }
+        }
+        add_action('manage_users_custom_column', 'cuc_custom_column_emailoptout', 15, 3);
+        add_filter('manage_users_columns', 'cuc_column_emailoptout', 15, 1);
+        //***** END show field in userlist ***************
+
+
+        //***** Show updateable field in user settings  *******
+        function wpae_add_optout_field_user_profile( $user ) {
+            ?>
+            <h3><?php _e('Email Settings', 'your_textdomain'); ?></h3>
+            
+            <table class="form-table">
+                <tr>
+                    <th>
+                        <label for="ynot_emailOptOut"><?php _e('Email Opt-Out', 'wpae'); ?>
+                        </label></th>
+                        <td>
+                            <input type="checkbox" name="ynot_emailOptOut" id="ynot_emailOptOut" <?php echo( get_the_author_meta( 'ynot_emailOptOut', $user->ID ) ? "checked='checked'":"") ?> /><br />
+                            <span class="description"><?php _e('User Opt-Out from all Emails except order confirmations.', 'wpae'); ?></span>
+                        </td>
+                    </tr>
+                </table>
+                <?php }
+
+                function wpae_save_optout_field_user_profile( $user_id ) {
+
+                    if ( !current_user_can( 'edit_user', $user_id ) )
+                        return FALSE;
+
+                    update_usermeta( $user_id, 'ynot_emailOptOut', !empty($_POST['ynot_emailOptOut']));
+                }
+                if(is_admin()){
+                    add_action( 'show_user_profile', 'wpae_add_optout_field_user_profile' );
+                    add_action( 'edit_user_profile', 'wpae_add_optout_field_user_profile' );
+
+                    add_action( 'personal_options_update', 'wpae_save_optout_field_user_profile' );
+                    add_action( 'edit_user_profile_update', 'wpae_save_optout_field_user_profile' );
+                }
+
+        //***** END Show updateable field in user settings  *******
+
         function wpae_unschedule(){
             // Get the timestamp of the next scheduled run and Un-schedule the event
             $timestamp = wp_next_scheduled( 'wpae_daily_sendemail' );    
@@ -125,8 +176,7 @@
             }            
         }
 
-        function wpae_get_userlang_appendix($userid){
-            $userlang = get_user_meta( $user_id, 'ynot_userlang', true );
+        function wpae_get_userlang_appendix($userlang){            
             if ($userlang == false){
                 $userlang = 'en';
             }
@@ -135,6 +185,7 @@
             }
             return '';
         }
+
         function wpae_autoemailer_callback() {
             $emailerOptionName = 'wppizza-auto-emailer-config';
             $emailerDebugAddrName = 'wppizza-auto-emailer-config-debugemail';
@@ -152,20 +203,43 @@
                     
                     if($emailsToSend){
                         foreach($emailsToSend as $k=>$v){
-                            $customerAddress = $v['emailaddr'];
+                            $user_id = $v['ID'];
+                            $usermeta = get_user_meta( $user_id );
+                            $optout = $usermeta['ynot_emailOptOut'][0];
+                            $userlang = $usermeta['ynot_userlang'][0];
 
-                            $to = $customerAddress;
+                            $emailssent = maybe_serialize($usermeta['wpae_emailssent'][0]);
+                            $emailtemplate_key = 'day_'.$emailConfig['number_of_days'];
 
-                            if(strlen($debugAddr)>0){
-                                $to = $debugAddr;
-                            }  
+                            if ($optout){
+                                $statusString.= 'skipping because customer opted out: '.$customerAddress.PHP_EOL;
+                            } else if (array_key_exists($emailtemplate_key, $emailssent)) {
+                                $statusString.= 'skipping because customer already received email: '.$customerAddress.PHP_EOL;
+                            } else {
+                                $customerAddress = $v['emailaddr'];
+                                $to = $customerAddress;
 
-                            $langAppendix = wpae_get_userlang_appendix($v['ID']);                            
-                            $subject = stripslashes($emailConfig['subject_line'.$langAppendix]);
-                            $message = stripslashes($emailConfig['email_text'.$langAppendix]);                       
+                                if(strlen($debugAddr)>0){
+                                    $to = $debugAddr;
+                                }  
 
-                            $statusString.= 'sending email to '. $customerAddress .'; subject: '.$subject.PHP_EOL;
-                            $sendResult = wp_mail( $to, $subject, $message,'Bcc: ynotseoul@gmail.com' );
+                                $langAppendix = wpae_get_userlang_appendix($userlang);
+                                $subject = stripslashes($emailConfig['subject_line'.$langAppendix]);
+                                $message = stripslashes($emailConfig['email_text'.$langAppendix]);  
+
+                                $statusString.= 'sending email to '. $customerAddress .'; subject: '.$subject.PHP_EOL;
+                                $sendResult = wp_mail( $to, $subject, $message,'Bcc: ynotseoul@gmail.com' );
+
+                                //save what emails we have sent to this user
+                                
+                                if (!$emailssent){
+                                    $emailssent = $arrayName = array($emailtemplate_key => current_time('mysql') ); ;
+                                }
+                                else {
+                                    $emailssent[$emailtemplate_key] = current_time('mysql');
+                                }
+                                update_user_meta( $user_id, 'wpae_emailssent', $emailssent );
+                            }
                         }
                     }
                 }
