@@ -208,7 +208,7 @@
                             $optout = $usermeta['ynot_emailOptOut'][0];
                             $userlang = $usermeta['ynot_userlang'][0];
 
-                            $emailssent = maybe_serialize($usermeta['wpae_emailssent'][0]);
+                            $emailssent = maybe_unserialize($usermeta['wpae_emailssent'][0]);
                             $emailtemplate_key = 'day_'.$emailConfig['number_of_days'];
 
                             if ($optout){
@@ -227,13 +227,13 @@
                                 $subject = stripslashes($emailConfig['subject_line'.$langAppendix]);
                                 $message = stripslashes($emailConfig['email_text'.$langAppendix]);  
 
-                                $statusString.= 'sending email to '. $customerAddress .'; subject: '.$subject.PHP_EOL;
+                                $statusString.= 'sending email to '. $customerAddress .'; subject: '.$subject.' emailsent_keys:'.implode(", ",array_keys($emailssent)).PHP_EOL;
                                 $sendResult = wp_mail( $to, $subject, $message,'Bcc: ynotseoul@gmail.com' );
 
                                 //save what emails we have sent to this user
                                 
                                 if (!$emailssent){
-                                    $emailssent = $arrayName = array($emailtemplate_key => current_time('mysql') ); ;
+                                    $emailssent = array($emailtemplate_key => current_time('mysql') );
                                 }
                                 else {
                                     $emailssent[$emailtemplate_key] = current_time('mysql');
